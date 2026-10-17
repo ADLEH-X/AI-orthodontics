@@ -1396,10 +1396,380 @@
     geminiModal?.classList.add("open");
   }
 
+  /**
+   * Interactive 3D Orthodontic Dental Arch Stage
+   * Spring-damper physics on all 14 brackets + real-time Catmull-Rom archwire deflection
+   * Works with mouse hover/move on desktop and touch/drag/tap on mobile phones.
+   */
+  function initInteractiveDentalArch() {
+    const stage = document.getElementById("archInteractiveStage");
+    const rig = document.getElementById("arch3dRig");
+    const bracketsLayer = document.getElementById("archBracketsLayer");
+    const wireGlow = document.getElementById("archWireGlow");
+    const wireCore = document.getElementById("archWireCore");
+    const forceGroup = document.getElementById("archForceVectors");
+    const hudText = document.getElementById("archHudText");
+    const pulseBtn = document.getElementById("btnArchPulseWave");
+
+    if (!stage || !rig || !bracketsLayer || !wireGlow || !wireCore) return;
+
+    // 14 brackets mapped to exact % coordinates on assets/ortho-arch.jpg
+    const BRACKET_DATA = [
+      { code: "#17", name: "R 2nd Molar", rx: "Buccal Tube · Torque −14° · Tip 0°", x: 31.0, y: 23.6, rot: -44, nx: -0.73, ny: -0.68 },
+      { code: "#16", name: "R 1st Molar", rx: "Buccal Tube · Torque −14° · Offset 10°", x: 26.7, y: 29.0, rot: -50, nx: -0.79, ny: -0.61 },
+      { code: "#15", name: "R 2nd Premolar", rx: "MBT 0.022″ · Torque −7° · Tip 0°", x: 23.3, y: 34.4, rot: -60, nx: -0.88, ny: -0.47 },
+      { code: "#14", name: "R 1st Premolar", rx: "MBT 0.022″ · Torque −7° · Tip 0°", x: 21.1, y: 41.8, rot: -82, nx: -0.99, ny: -0.14 },
+      { code: "#13", name: "R Canine", rx: "MBT 0.022″ · Torque −7° · Tip +8°", x: 21.7, y: 48.9, rot: 72, nx: -0.95, ny: 0.31 },
+      { code: "#12", name: "R Lateral Incisor", rx: "MBT 0.022″ · Torque +10° · Tip +8°", x: 24.2, y: 53.5, rot: 54, nx: -0.81, ny: 0.59 },
+      { code: "#11", name: "R Central Incisor", rx: "MBT 0.022″ · Torque +17° · Tip +4°", x: 27.9, y: 57.1, rot: 39, nx: -0.65, ny: 0.76 },
+      { code: "#21", name: "L Central Incisor", rx: "MBT 0.022″ · Torque +17° · Tip +4°", x: 32.6, y: 59.7, rot: 26, nx: -0.45, ny: 0.89 },
+      { code: "#22", name: "L Lateral Incisor", rx: "MBT 0.022″ · Torque +10° · Tip +8°", x: 38.2, y: 61.3, rot: 14, nx: -0.21, ny: 0.98 },
+      { code: "#23", name: "L Canine", rx: "MBT 0.022″ · Torque −7° · Tip +8°", x: 44.9, y: 62.1, rot: 4, nx: 0.03, ny: 1.00 },
+      { code: "#24", name: "L 1st Premolar", rx: "MBT 0.022″ · Torque −7° · Tip 0°", x: 52.9, y: 61.1, rot: -10, nx: 0.21, ny: 0.98 },
+      { code: "#25", name: "L 2nd Premolar", rx: "MBT 0.022″ · Torque −7° · Tip 0°", x: 59.9, y: 58.6, rot: -21, nx: 0.41, ny: 0.91 },
+      { code: "#26", name: "L 1st Molar", rx: "Buccal Tube · Torque −14° · Offset 10°", x: 67.9, y: 54.6, rot: -27, nx: 0.50, ny: 0.87 },
+      { code: "#27", name: "L 2nd Molar", rx: "Buccal Tube · Torque −14° · Tip 0°", x: 76.6, y: 49.0, rot: -31, nx: 0.56, ny: 0.83 }
+    ];
+
+    const DISTAL_LEFT = { x: 36.4, y: 17.3 };
+    const DISTAL_RIGHT = { x: 80.3, y: 46.8 };
+
+    // Build bracket DOM nodes & physics state
+    const brackets = BRACKET_DATA.map((item, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "arch-bracket-node";
+      btn.style.left = `${item.x}%`;
+      btn.style.top = `${item.y}%`;
+      btn.setAttribute("aria-label", `${item.code} ${item.name} bracket`);
+      btn.innerHTML = `
+        <span class="arch-bracket-tag">${item.code} · ${item.name}</span>
+        <span class="arch-bracket-hw" style="--b-rot:${item.rot}deg;"></span>
+      `;
+      bracketsLayer.appendChild(btn);
+
+      const hwEl = btn.querySelector(".arch-bracket-hw");
+      return {
+        ...item,
+        index: idx,
+        el: btn,
+        hwEl,
+        dx: 0,
+        dy: 0,
+        vx: 0,
+        vy: 0,
+        tx: 0,
+        ty: 0,
+        scale: 1,
+        vscale: 0,
+        tscale: 1,
+        rotOffset: 0
+      };
+    });
+
+    let pointerActive = false;
+    let pointerX = 50;
+    let pointerY = 50;
+    let activeIdx = -1;
+    let animFrameId = null;
+
+    function buildSplinePath(pts) {
+      if (pts.length < 2) return "";
+      let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[i - 1] || pts[i];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[i + 2] || p2;
+        const c1x = p1.x + (p2.x - p0.x) / 6;
+        const c1y = p1.y + (p2.y - p0.y) / 6;
+        const c2x = p2.x - (p3.x - p1.x) / 6;
+        const c2y = p2.y - (p3.y - p1.y) / 6;
+        d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+      }
+      return d;
+    }
+
+    function updateTargetsFromPointer() {
+      if (!pointerActive) {
+        activeIdx = -1;
+        brackets.forEach((b) => {
+          b.tx = 0;
+          b.ty = 0;
+          b.tscale = 1;
+          b.rotOffset = 0;
+          b.el.classList.remove("is-active", "is-neighbor");
+        });
+        stage.classList.remove("is-interacting");
+        return;
+      }
+
+      stage.classList.add("is-interacting");
+
+      // Find nearest bracket to pointer
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      brackets.forEach((b, idx) => {
+        const dist = Math.hypot(pointerX - b.x, pointerY - b.y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = idx;
+        }
+      });
+
+      const influenceRadius = 15.5;
+      if (bestDist <= influenceRadius) {
+        if (activeIdx !== bestIdx) {
+          // Give the newly hovered/touched bracket a crisp spring kick
+          const nb = brackets[bestIdx];
+          nb.vx += nb.nx * 0.95;
+          nb.vy += nb.ny * 0.95;
+          nb.vscale += 0.22;
+          activeIdx = bestIdx;
+        }
+      } else {
+        activeIdx = -1;
+      }
+
+      brackets.forEach((b, idx) => {
+        const dist = Math.hypot(pointerX - b.x, pointerY - b.y);
+        const isPrimary = idx === activeIdx;
+        const isNeighbor = activeIdx !== -1 && Math.abs(idx - activeIdx) === 1;
+
+        b.el.classList.toggle("is-active", isPrimary);
+        b.el.classList.toggle("is-neighbor", isNeighbor);
+
+        if (dist < influenceRadius) {
+          const falloff = Math.pow(1 - dist / influenceRadius, 1.6);
+          const pullX = (pointerX - b.x) * 0.16 * falloff;
+          const pullY = (pointerY - b.y) * 0.16 * falloff;
+          const popOut = (isPrimary ? 2.35 : 1.35) * falloff;
+
+          b.tx = b.nx * popOut + pullX;
+          b.ty = b.ny * popOut + pullY;
+          b.tscale = 1 + (isPrimary ? 0.48 : 0.24) * falloff;
+          b.rotOffset = ((pointerX - b.x) * 1.4) * falloff;
+        } else {
+          b.tx = 0;
+          b.ty = 0;
+          b.tscale = 1;
+          b.rotOffset = 0;
+        }
+      });
+
+      if (activeIdx !== -1 && hudText) {
+        const ab = brackets[activeIdx];
+        const forceN = (1.1 + Math.hypot(ab.dx, ab.dy) * 0.45).toFixed(1);
+        hudText.innerHTML = `<strong>${ab.code} ${ab.name}</strong> · ${ab.rx} · Force <strong>${forceN} N</strong>`;
+      }
+    }
+
+    function stepPhysics() {
+      const stiffness = 0.17;
+      const damping = 0.76;
+      let anyMoving = pointerActive;
+
+      brackets.forEach((b) => {
+        const ax = (b.tx - b.dx) * stiffness;
+        const ay = (b.ty - b.dy) * stiffness;
+        b.vx = (b.vx + ax) * damping;
+        b.vy = (b.vy + ay) * damping;
+        b.dx += b.vx;
+        b.dy += b.vy;
+
+        const ascale = (b.tscale - b.scale) * 0.2;
+        b.vscale = (b.vscale + ascale) * 0.74;
+        b.scale += b.vscale;
+
+        if (
+          Math.abs(b.dx) > 0.01 ||
+          Math.abs(b.dy) > 0.01 ||
+          Math.abs(b.vx) > 0.01 ||
+          Math.abs(b.vy) > 0.01 ||
+          Math.abs(b.scale - 1) > 0.005
+        ) {
+          anyMoving = true;
+        } else if (!pointerActive) {
+          b.dx = 0;
+          b.dy = 0;
+          b.scale = 1;
+        }
+
+        // Convert % displacement into pixel visual offset on the bracket hardware chip
+        const pxX = b.dx * 4.4;
+        const pxY = b.dy * 4.4;
+        const dispMag = Math.hypot(b.dx, b.dy);
+        const dynOpacity = Math.min(1, 0.28 + dispMag * 0.45);
+        b.hwEl.style.setProperty("--b-dx", `${pxX.toFixed(2)}px`);
+        b.hwEl.style.setProperty("--b-dy", `${pxY.toFixed(2)}px`);
+        b.hwEl.style.setProperty("--b-scale", b.scale.toFixed(3));
+        b.hwEl.style.setProperty("--b-rot", `${(b.rot + b.rotOffset).toFixed(1)}deg`);
+        b.hwEl.style.setProperty("--b-opacity", dynOpacity.toFixed(2));
+      });
+
+      // Update continuous superelastic archwire spline through displaced bracket slots
+      const wirePts = [
+        DISTAL_LEFT,
+        ...brackets.map((b) => ({ x: b.x + b.dx * 0.85, y: b.y + b.dy * 0.85 })),
+        DISTAL_RIGHT
+      ];
+      const dPath = buildSplinePath(wirePts);
+      wireGlow.setAttribute("d", dPath);
+      wireCore.setAttribute("d", dPath);
+
+      // Render biomechanical force vector line on active or displaced brackets
+      if (forceGroup) {
+        const linesHtml = brackets
+          .filter((b) => Math.hypot(b.dx, b.dy) > 0.35)
+          .map((b) => {
+            const x1 = b.x;
+            const y1 = b.y;
+            const x2 = b.x + b.dx * 2.2 + b.nx * 1.4;
+            const y2 = b.y + b.dy * 2.2 + b.ny * 1.4;
+            return `<line class="arch-force-line" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" /><circle cx="${x2.toFixed(2)}" cy="${y2.toFixed(2)}" r="0.65" fill="var(--accent)" />`;
+          })
+          .join("");
+        forceGroup.innerHTML = linesHtml;
+      }
+
+      if (anyMoving) {
+        animFrameId = requestAnimationFrame(stepPhysics);
+      } else {
+        animFrameId = null;
+      }
+    }
+
+    function ensurePhysicsLoop() {
+      if (!animFrameId) {
+        animFrameId = requestAnimationFrame(stepPhysics);
+      }
+    }
+
+    // Trigger an orthodontic activation ripple wave across all 14 brackets
+    function triggerArchWave(originIdx = 6) {
+      stage.classList.add("is-interacting");
+      brackets.forEach((b, idx) => {
+        const distSteps = Math.abs(idx - originIdx);
+        setTimeout(() => {
+          b.vx += b.nx * 1.55;
+          b.vy += b.ny * 1.55;
+          b.vscale += 0.36;
+          b.el.classList.add("is-active");
+          if (hudText) {
+            hudText.innerHTML = `<strong>${b.code} ${b.name}</strong> · Archwire Activation Wave · <strong>${b.rx}</strong>`;
+          }
+          ensurePhysicsLoop();
+          setTimeout(() => {
+            if (activeIdx !== idx) b.el.classList.remove("is-active");
+          }, 260);
+        }, distSteps * 48);
+      });
+
+      setTimeout(() => {
+        if (!pointerActive) {
+          stage.classList.remove("is-interacting");
+          if (hudText) {
+            hudText.textContent = "Hover or touch any bracket to flex the archwire";
+          }
+        }
+      }, 900);
+    }
+
+    function handleStagePointer(clientX, clientY) {
+      const rect = rig.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      pointerX = ((clientX - rect.left) / rect.width) * 100;
+      pointerY = ((clientY - rect.top) / rect.height) * 100;
+      pointerActive = true;
+
+      // Subtle 3D tilt of the dental model toward the cursor/finger
+      const normX = (pointerX - 50) / 50; // -1 .. 1
+      const normY = (pointerY - 50) / 50; // -1 .. 1
+      const rotY = (normX * 7.5).toFixed(2);
+      const rotX = (-normY * 6.0).toFixed(2);
+      rig.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale(1.015)`;
+
+      updateTargetsFromPointer();
+      ensurePhysicsLoop();
+    }
+
+    function resetStagePointer() {
+      pointerActive = false;
+      rig.style.transform = "rotateX(0deg) rotateY(0deg) scale(1)";
+      updateTargetsFromPointer();
+      if (hudText) {
+        hudText.textContent = "Hover or touch any bracket to flex the archwire";
+      }
+      ensurePhysicsLoop();
+    }
+
+    // Desktop mouse / pointer events
+    rig.addEventListener("pointermove", (e) => {
+      handleStagePointer(e.clientX, e.clientY);
+    });
+
+    rig.addEventListener("pointerdown", (e) => {
+      handleStagePointer(e.clientX, e.clientY);
+      if (activeIdx !== -1) {
+        triggerArchWave(activeIdx);
+      }
+    });
+
+    rig.addEventListener("pointerleave", () => {
+      resetStagePointer();
+    });
+
+    // Mobile touch events (smooth finger scrubbing across brackets)
+    rig.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches && e.touches[0]) {
+          handleStagePointer(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      },
+      { passive: true }
+    );
+
+    rig.addEventListener(
+      "touchmove",
+      (e) => {
+        if (e.touches && e.touches[0]) {
+          handleStagePointer(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      },
+      { passive: true }
+    );
+
+    rig.addEventListener("touchend", () => {
+      setTimeout(resetStagePointer, 650);
+    });
+
+    // Individual bracket click/tap
+    brackets.forEach((b, idx) => {
+      b.el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        triggerArchWave(idx);
+      });
+    });
+
+    if (pulseBtn) {
+      pulseBtn.addEventListener("click", () => {
+        triggerArchWave(7);
+      });
+    }
+
+    // Initial render of archwire spline + subtle welcome wave on load
+    stepPhysics();
+    setTimeout(() => {
+      triggerArchWave(7);
+    }, 650);
+  }
+
   // Initialize Application
   document.addEventListener("DOMContentLoaded", () => {
     loadPersistedState();
     bindEvents();
+    initInteractiveDentalArch();
     renderAll();
     window.addEventListener("orthoai-proxy-ready", () => {
       applyPrefsToDom();

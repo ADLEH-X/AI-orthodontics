@@ -498,17 +498,254 @@ a { color: var(--accent); text-decoration: none; }
   animation: rise 0.9s 0.1s var(--ease-out) both;
 }
 
-.hero-art::before {
-  content: "";
-  position: absolute;
-  inset: 4% 8% 0 8%;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 50% 45%, var(--accent-soft), transparent 68%);
-  z-index: -1;
+.arch-interactive-stage {
+  position: relative;
+  width: 100%;
+  perspective: 950px;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
 }
 
-.hero-art-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.arch-3d-rig {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  transform-style: preserve-3d;
+  transition: transform 0.14s ease-out;
+  will-change: transform;
+  cursor: grab;
+}
+
+.arch-3d-rig:active {
+  cursor: grabbing;
+}
+
+.arch-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 16px;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse 64% 60% at 50% 51%, #000 56%, rgba(0, 0, 0, 0.72) 74%, transparent 97%);
+  mask-image: radial-gradient(ellipse 64% 60% at 50% 51%, #000 56%, rgba(0, 0, 0, 0.72) 74%, transparent 97%);
+  filter: contrast(1.03) saturate(1.04);
+  transition: filter 0.25s ease;
+}
+
+[data-theme="midnight"] .arch-photo {
+  filter: brightness(0.9) contrast(1.08) saturate(1.05);
+}
+
+.arch-overlay-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 2;
+}
+
+.arch-wire-glow {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 0.85;
+  stroke-linecap: round;
+  opacity: 0.35;
+  transition: opacity 0.2s ease, stroke-width 0.2s ease;
+}
+
+.arch-interactive-stage.is-interacting .arch-wire-glow {
+  opacity: 0.85;
+  stroke-width: 1.25;
+}
+
+.arch-wire-core {
+  fill: none;
+  stroke: #FFFDF9;
+  stroke-width: 0.42;
+  stroke-linecap: round;
+  opacity: 0.92;
+}
+
+.arch-force-line {
+  stroke: var(--accent);
+  stroke-width: 0.38;
+  stroke-linecap: round;
+  stroke-dasharray: 0.9 0.7;
+  opacity: 0.9;
+}
+
+.arch-brackets-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+}
+
+.arch-bracket-node {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
+  margin-top: -17px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.arch-bracket-hw {
+  position: relative;
+  width: 15px;
+  height: 12px;
+  border-radius: 3px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(212, 218, 228, 0.92) 52%, rgba(148, 158, 176, 0.95) 100%);
+  border: 1.2px solid rgba(18, 32, 58, 0.65);
+  box-shadow:
+    0 2px 5px rgba(18, 32, 58, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  opacity: var(--b-opacity, 0.28);
+  transform: translate3d(var(--b-dx, 0px), var(--b-dy, 0px), 0)
+    rotate(var(--b-rot, 0deg))
+    scale(var(--b-scale, 1));
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+/* Archwire horizontal slot + vertical tie-wing groove inside each bracket */
+.arch-bracket-hw::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: rgba(18, 32, 58, 0.55);
+}
+
+.arch-bracket-hw::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 50%;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: rgba(18, 32, 58, 0.35);
+}
+
+/* Elastomeric ligature O-ring glow when active or neighboring */
+.arch-bracket-node.is-neighbor .arch-bracket-hw {
+  opacity: 0.95;
+  border-color: var(--q1-strip);
+  box-shadow:
+    0 0 0 2.5px rgba(27, 107, 71, 0.35),
+    0 4px 10px rgba(18, 32, 58, 0.32);
+}
+
+.arch-bracket-node.is-active .arch-bracket-hw {
+  opacity: 1;
+  border-color: var(--accent);
+  background: linear-gradient(145deg, #FFFFFF 0%, #FFE4DC 55%, #FFB9A6 100%);
+  box-shadow:
+    0 0 0 3.5px rgba(207, 53, 18, 0.38),
+    0 6px 14px rgba(207, 53, 18, 0.45);
+}
+
+.arch-bracket-tag {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px) scale(0.88);
+  padding: 0.12rem 0.42rem;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 6;
+}
+
+.arch-bracket-node.is-active .arch-bracket-tag {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px) scale(1);
+}
+
+/* Interactive HUD bar under the 3D dental arch */
+.arch-hud-bar {
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--radius-ctl);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.arch-hud-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.arch-hud-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arch-hud-text strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.arch-hud-pulse-btn {
+  border: 1px solid var(--border-strong);
+  background: var(--bg-page);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  padding: 0.2rem 0.52rem;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.arch-hud-pulse-btn:hover {
+  background: var(--accent);
+  color: #FFFFFF;
+  border-color: var(--accent);
+}
 
 /* Status ticker row under the hero */
 .hero-ticker { display: block; padding-top: 2.4rem; }
