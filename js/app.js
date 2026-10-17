@@ -1234,9 +1234,16 @@
             updateCardSummaryDom(paper.id, fresh);
             showToast(`Updated summary with ${fresh.model}`);
           } catch (err) {
-            showToast(`Gemini error: ${err.message}`);
-            target.textContent = origText;
-            target.disabled = false;
+            const msg = String(err.message || "");
+            if (msg.includes("CREDITS_DEPLETED")) {
+              const localSum = window.ORTHO_AI_SUMMARIZER.getImmediateSummary(paper);
+              updateCardSummaryDom(paper.id, localSum);
+              showToast("AI Studio Prepay balance is $0 · Using Instant Clinical Synthesis (or create a Free-Tier key in a new project)");
+            } else {
+              showToast(`Gemini error: ${msg}`);
+              target.textContent = origText;
+              target.disabled = false;
+            }
           }
         } else if (action === "open-gemini-modal") {
           openGeminiModal();

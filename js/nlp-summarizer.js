@@ -317,6 +317,9 @@ window.ORTHO_AI_SUMMARIZER = (function () {
           if (response.status === 400 && /API_KEY_INVALID|key not valid/i.test(errMsg)) {
             throw new Error("INVALID_API_KEY: " + errMsg);
           }
+          if (response.status === 402 || /prepayment credits are depleted/i.test(errMsg)) {
+            throw new Error("CREDITS_DEPLETED: " + errMsg);
+          }
           lastError = new Error(`${model}: ${errMsg}`);
           continue;
         }
@@ -334,7 +337,10 @@ window.ORTHO_AI_SUMMARIZER = (function () {
         const parsed = JSON.parse(textOut);
         return { parsed, modelUsed: model };
       } catch (err) {
-        if (String(err.message).startsWith("INVALID_API_KEY")) {
+        if (
+          String(err.message).startsWith("INVALID_API_KEY") ||
+          String(err.message).startsWith("CREDITS_DEPLETED")
+        ) {
           throw err;
         }
         lastError = err;
@@ -467,7 +473,10 @@ ${JSON.stringify(payloadItems)}`;
             saveCache();
           } catch (batchErr) {
             console.warn("Gemini batch chunk skipped:", batchErr.message);
-            if (String(batchErr.message).includes("INVALID_API_KEY")) {
+            if (
+              String(batchErr.message).includes("INVALID_API_KEY") ||
+              String(batchErr.message).includes("CREDITS_DEPLETED")
+            ) {
               break;
             }
           }
