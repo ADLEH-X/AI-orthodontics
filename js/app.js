@@ -423,6 +423,18 @@
       totalCountEl.textContent = `${state.papers.length} papers indexed`;
     }
 
+    // Masthead headline numbers
+    const heroTotal = document.getElementById("heroStatTotal");
+    const heroTop = document.getElementById("heroStatTop");
+    const heroNew = document.getElementById("heroStatNew");
+    if (heroTotal) heroTotal.textContent = state.papers.length || "–";
+    if (heroTop) {
+      heroTop.textContent = state.papers.length
+        ? state.papers.filter((p) => p.quartile === "Q1" || p.quartile === "Q2").length
+        : "–";
+    }
+    if (heroNew) heroNew.textContent = state.papers.length ? state.newIds.size : "–";
+
     // Tab counts
     const countAll = document.getElementById("tabCountAll");
     const countUnread = document.getElementById("tabCountUnread");
@@ -473,7 +485,7 @@
         <div class="ai-summary-panel" id="aiPanel_${escapeHtml(paper.id)}">
           <div class="ai-panel-header" style="margin-bottom:0;">
             <div class="ai-panel-title-group">
-              <span class="ai-sparkle-label">✨ AI Summary</span>
+              <span class="ai-sparkle-label">AI Summary</span>
               <span class="ai-model-tag">No Abstract Provided</span>
             </div>
             <span style="font-size:0.77rem; color:var(--text-muted);">
@@ -491,7 +503,7 @@
       <div class="ai-summary-panel" id="aiPanel_${escapeHtml(paper.id)}">
         <div class="ai-panel-header">
           <div class="ai-panel-title-group">
-            <span class="ai-sparkle-label">✨ AI Summary</span>
+            <span class="ai-sparkle-label">AI Summary</span>
             <span class="ai-model-tag">${escapeHtml(badgeText)}</span>
           </div>
           <div class="ai-panel-controls">
@@ -594,7 +606,7 @@
     }
 
     container.innerHTML = papers
-      .map((paper) => {
+      .map((paper, idx) => {
         const isNew = state.newIds.has(paper.id);
         const isRead = state.readIds.has(paper.id);
         const isSaved = state.savedPapersMap.has(paper.id);
@@ -606,20 +618,25 @@
 
         return `
         <article class="paper-card ${isRead ? "is-read" : ""}" data-id="${escapeHtml(paper.id)}" data-quartile="${escapeHtml(q)}">
-          <!-- 1. Quartile Badge, Journal, Date, and NEW Tag -->
+          <!-- Left plate: running index + SCImago quartile numeral -->
+          <aside class="card-plate">
+            <span class="plate-index">№ ${String(idx + 1).padStart(2, "0")}</span>
+            <button
+              type="button"
+              class="quartile-badge q-${escapeHtml(q)}"
+              data-action="inspect-quartile"
+              data-id="${escapeHtml(paper.id)}"
+              title="Click for SCImago Journal Rank (SJR) details"
+            >
+              <span>${escapeHtml(badgeLabel)}</span>
+              ${sjrVal ? `<span class="quartile-sjr-sub">SJR ${sjrVal.toFixed(2)}</span>` : ""}
+            </button>
+          </aside>
+
+          <div class="card-body">
+          <!-- 1. Journal, Date, PMID and NEW / OA tags -->
           <div class="card-meta-top">
             <div class="card-meta-left">
-              <button
-                type="button"
-                class="quartile-badge q-${escapeHtml(q)}"
-                data-action="inspect-quartile"
-                data-id="${escapeHtml(paper.id)}"
-                title="Click for SCImago Journal Rank (SJR) details"
-              >
-                <span>${escapeHtml(badgeLabel)}</span>
-                ${sjrVal ? `<span class="quartile-sjr-sub">SJR ${sjrVal.toFixed(2)}</span>` : ""}
-              </button>
-
               <span
                 class="card-journal-name"
                 data-action="inspect-quartile"
@@ -746,6 +763,7 @@
                 <span>${isRead ? "✓ Read" : "Mark Read"}</span>
               </button>
             </div>
+          </div>
           </div>
         </article>
       `;
