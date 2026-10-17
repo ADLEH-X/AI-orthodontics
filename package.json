@@ -1,0 +1,10 @@
+{
+  "name": "ortho-papers",
+  "version": "1.0.0",
+  "description": "High-end editorial research feed for AI & Orthodontics with SCImago Quartiles (Q1-Q4) and Gemini Free-Tier AI summaries.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js --open",
+    "serve": "node server.js"
+  }
+}
