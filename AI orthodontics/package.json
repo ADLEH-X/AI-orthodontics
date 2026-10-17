@@ -1,9 +1,0 @@
-{
-  "name": "ortho-papers",
-  "version": "1.0.0",
-  "description": "Ortho Papers — research feed for AI & Orthodontics with SCImago quartiles and Gemini summaries.",
-  "scripts": {
-    "dev": "node server.js --open",
-    "start": "node server.js"
-  }
-}

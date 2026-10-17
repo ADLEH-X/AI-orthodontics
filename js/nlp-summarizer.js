@@ -52,9 +52,27 @@ window.ORTHO_AI_SUMMARIZER = (function () {
     }
   }
 
+  // Server-side proxy (Vercel /api/gemini) keeps the key private on the host.
+  const PROXY_SENTINEL = "__server_proxy__";
+  const PROXY_URL = "/api/gemini";
+  let proxyAvailable = false;
+
+  // Probe once at load: if the host exposes a configured proxy, no browser key is needed.
+  if (typeof fetch === "function" && /^https?:/.test(location.protocol)) {
+    fetch(PROXY_URL, { method: "GET" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j && j.configured) {
+          proxyAvailable = true;
+          window.dispatchEvent(new CustomEvent("orthoai-proxy-ready"));
+        }
+      })
+      .catch(() => {});
+  }
+
   function getApiKey() {
     const stored = (localStorage.getItem(API_KEY_STORAGE) || "").trim();
-    return stored || DEFAULT_API_KEY;
+    return stored || DEFAULT_API_KEY || (proxyAvailable ? PROXY_SENTINEL : "");
   }
 
   function setApiKey(key) {
@@ -265,9 +283,12 @@ window.ORTHO_AI_SUMMARIZER = (function () {
     for (const model of modelsToTry) {
       try {
         recordApiCall();
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-          model
-        )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const useProxy = apiKey === PROXY_SENTINEL;
+        const url = useProxy
+          ? PROXY_URL
+          : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+              model
+            )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
         const body = {
           contents: [
@@ -282,6 +303,7 @@ window.ORTHO_AI_SUMMARIZER = (function () {
             responseMimeType: "application/json"
           }
         };
+        if (useProxy) body.model = model;
 
         const response = await fetch(url, {
           method: "POST",

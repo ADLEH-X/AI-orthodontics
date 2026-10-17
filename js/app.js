@@ -1376,6 +1376,11 @@
     loadPersistedState();
     bindEvents();
     renderAll();
+    window.addEventListener("orthoai-proxy-ready", () => {
+      applyPrefsToDom();
+      renderFeedList();
+      triggerGeminiBatchForVisible();
+    });
     // Perform live fetch on startup to ensure latest published Orthodontics + AI literature
     refreshFeed(true);
   });
